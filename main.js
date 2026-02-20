@@ -749,7 +749,83 @@ function formatGeoError(error){
   return null;
 }
 
+function formatTimelineTime(date){
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function compactLocationLabel(label){
+  if(!label) return "Unknown";
+  const first = String(label).split(",")[0]?.trim();
+  return first || String(label).trim();
+}
+
+function isSevereWeatherSample(sample){
+  if(!sample) return false;
+  if(typeof sample.weatherCode === "number" && sample.weatherCode >= 95) return true;
+  if(Number(sample.rainProbability) >= 70) return true;
+  if(Number(sample.windSpeed) >= 35) return true;
+  return false;
+}
+
+function isNightByLocalHour(){
+  const hour = new Date().getHours();
+  return hour < 6 || hour >= 19;
+}
+
+async function applyDriverEyeMode(){
+  const nightByHour = isNightByLocalHour();
+  const setMode = (isNight) => {
+    document.body.classList.toggle("night-mode", Boolean(isNight));
+  };
+
+  setMode(nightByHour);
+
+  if(!("permissions" in navigator) || !("geolocation" in navigator)){
+    return;
+  }
+
+  try{
+    const permission = await navigator.permissions.query({ name: "geolocation" });
+    if(permission.state !== "granted"){
+      return;
+    }
+
+    const position = await getCurrentPosition();
+    const lat = position.coords.latitude;
+    const lon = position.coords.longitude;
+
+    const url = new URL("https://api.open-meteo.com/v1/forecast");
+    url.searchParams.set("latitude", String(lat));
+    url.searchParams.set("longitude", String(lon));
+    url.searchParams.set("daily", "sunrise,sunset");
+    url.searchParams.set("forecast_days", "1");
+    url.searchParams.set("timezone", "auto");
+
+    const response = await fetch(url.toString());
+    if(!response.ok){
+      return;
+    }
+
+    const data = await response.json();
+    const sunriseText = data?.daily?.sunrise?.[0];
+    const sunsetText = data?.daily?.sunset?.[0];
+    if(!sunriseText || !sunsetText){
+      return;
+    }
+
+    const nowMs = Date.now();
+    const sunriseMs = new Date(sunriseText).getTime();
+    const sunsetMs = new Date(sunsetText).getTime();
+    const nightBySun = nowMs < sunriseMs || nowMs >= sunsetMs;
+
+    setMode(nightBySun);
+  }catch{
+    setMode(nightByHour);
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  applyDriverEyeMode();
   attachOpenRouteHandler();
 
   onClick("btnTrip", () => {
@@ -811,162 +887,92 @@ document.addEventListener("DOMContentLoaded", () => {
         const route = await fetchRoute(origin, destination);
         const totalMiles = kmToMiles(route.distanceKm);
         const eldPlan = computeEldPlan(totalMiles, departureValue, speedValue);
-        const tenHourStops = eldPlan.stops.filter((item) => item.type === "10h_off_duty");
-        const breakStops = eldPlan.stops.filter((item) => item.type === "30m_break");
 
-        setStatus("Finding ELD 10h stop suggestions...");
+        const etd = new Date(departureValue);
+        const eta = eldPlan.arrivalAt;
 
-        const maxStopsToEvaluate = 6;
-        const evaluatedStops = tenHourStops.slice(0, maxStopsToEvaluate);
-
-        const tenHourSuggestions = await Promise.all(
-          evaluatedStops.map(async (stop, index) => {
-            const point = getPointAtMile(route.geometry, stop.mile);
-            if(!point){
-              return {
-                index,
-                stop,
-                stopLocation: "Location unavailable",
-                nearbyPlaces: []
-              };
-            }
-
-            let stopLocation = "Location unavailable";
-            try{
-              const reverse = await reverseGeocode(point.lat, point.lon);
-              stopLocation = reverse.short;
-            }catch{
-              stopLocation = "Location unavailable";
-            }
-
-            let nearbyPlaces = [];
-            try{
-              nearbyPlaces = await fetchRestPlacesNear(point.lat, point.lon, 20000);
-            }catch{
-              nearbyPlaces = [];
-            }
-
-            return {
-              index,
-              stop,
-              point,
-              stopLocation,
-              nearbyPlaces
-            };
-          })
-        );
-
-        const checkpoints = [
-          {
-            label: "Start",
-            at: new Date(departureValue),
-            point: route.geometry[0]
-          },
-          ...evaluatedStops.map((stop, idx) => ({
-            label: `ELD 10h stop ${idx + 1}`,
-            at: stop.at,
-            point: getPointAtMile(route.geometry, stop.mile)
-          })),
-          {
-            label: "Destination",
-            at: eldPlan.arrivalAt,
-            point: route.geometry[route.geometry.length - 1]
-          }
-        ].filter((item) => item.point);
+        const timelineCount = 5;
+        const timelineCheckpoints = Array.from({ length: timelineCount }, (_, index) => {
+          const ratio = timelineCount === 1 ? 0 : index / (timelineCount - 1);
+          const mile = totalMiles * ratio;
+          const point = getPointAtMile(route.geometry, mile) || route.geometry[index === 0 ? 0 : route.geometry.length - 1];
+          const at = new Date(etd.getTime() + (eta.getTime() - etd.getTime()) * ratio);
+          return { index, ratio, mile, point, at };
+        });
 
         setStatus("Loading weather timeline...");
-        const weatherByCheckpoint = await Promise.all(
-          checkpoints.map(async (checkpoint) => {
+
+        const timelineWithLocation = await Promise.all(
+          timelineCheckpoints.map(async (item) => {
+            if(item.index === 0){
+              return { ...item, location: compactLocationLabel(origin.label) };
+            }
+            if(item.index === timelineCheckpoints.length - 1){
+              return { ...item, location: compactLocationLabel(destination.label) };
+            }
             try{
-              const weather = await fetchWeatherAtTime(checkpoint.point.lat, checkpoint.point.lon, checkpoint.at);
-              return { checkpoint, weather };
+              const reverse = await reverseGeocode(item.point.lat, item.point.lon);
+              return { ...item, location: compactLocationLabel(reverse.short) };
             }catch{
-              return { checkpoint, weather: null };
+              return { ...item, location: `Mile ${item.mile.toFixed(0)}` };
             }
           })
         );
 
-        const summaryRows = [
-          { key: "Origin", value: origin.label },
-          { key: "Destination", value: destination.label },
-          { key: "Distance", value: `${totalMiles.toFixed(1)} mi` },
-          { key: "Driving speed", value: `${speedValue.toFixed(0)} mph` },
-          { key: "ETD", value: new Date(departureValue).toLocaleString() },
-          { key: "ETA (ELD-aware)", value: eldPlan.arrivalAt.toLocaleString() },
-          { key: "30-min breaks", value: String(breakStops.length) },
-          { key: "10h off-duty stops", value: String(tenHourStops.length) }
-        ]
-          .map((row) => `<div class="trip-kv"><span>${escapeHtml(row.key)}:</span><strong>${escapeHtml(row.value)}</strong></div>`)
-          .join("");
-
-        const stopsHtml = tenHourSuggestions.length === 0
-          ? `<div class="trip-empty">No mandatory 10h stop required for this trip at current speed assumptions.</div>`
-          : tenHourSuggestions
-            .map((entry, idx) => {
-              const stopMiles = entry.stop.mile.toFixed(1);
-              const stopAt = entry.stop.at.toLocaleString();
-              const places = entry.nearbyPlaces.length === 0
-                ? `<div class="trip-empty">No nearby rest area/truck stop found in OSM for this stop.</div>`
-                : entry.nearbyPlaces.slice(0, 3).map((place) => {
-                  const title = `${place.name} (${place.type})`;
-                  const address = place.address || "Address not available";
-                  const mapUrl = `https://www.openstreetmap.org/?mlat=${place.lat}&mlon=${place.lon}#map=15/${place.lat}/${place.lon}`;
-                  return `
-                    <div class="trip-place">
-                      <div class="trip-place-title">${escapeHtml(title)}</div>
-                      <div class="trip-place-line">${escapeHtml(place.distanceMiles.toFixed(1))} mi from ELD stop</div>
-                      <div class="trip-place-line">${escapeHtml(address)}</div>
-                      <div class="trip-place-line">Hours: ${escapeHtml(place.openingHours)}</div>
-                      <a class="trip-link js-open-route" href="${mapUrl}" data-lat="${place.lat}" data-lon="${place.lon}" data-name="${escapeHtml(title)}">Open map</a>
-                    </div>
-                  `;
-                }).join("");
-
-              return `
-                <div class="trip-stop-card">
-                  <div class="trip-stop-title">Mandatory 10h stop ${idx + 1}</div>
-                  <div class="trip-stop-line">Mile marker: ${escapeHtml(stopMiles)} mi</div>
-                  <div class="trip-stop-line">Expected stop time: ${escapeHtml(stopAt)}</div>
-                  <div class="trip-stop-line">Approx area: ${escapeHtml(entry.stopLocation)}</div>
-                  <div class="trip-stop-subtitle">Suggested nearby places for 10h off-duty</div>
-                  ${places}
-                </div>
-              `;
-            })
-            .join("");
-
-        const weatherHtml = weatherByCheckpoint
-          .map((item) => {
-            const checkpointLabel = `${item.checkpoint.label} - ${item.checkpoint.at.toLocaleString()}`;
-            if(!item.weather){
-              return `<div class="trip-weather-row"><strong>${escapeHtml(checkpointLabel)}</strong><span>Weather unavailable</span></div>`;
+        const timelineData = await Promise.all(
+          timelineWithLocation.map(async (item) => {
+            try{
+              const weather = await fetchWeatherAtTime(item.point.lat, item.point.lon, item.at);
+              return { ...item, weather };
+            }catch{
+              return { ...item, weather: null };
             }
-            return `
-              <div class="trip-weather-row">
-                <strong>${escapeHtml(checkpointLabel)}</strong>
-                <span>${escapeHtml(item.weather.temperature)}${escapeHtml(item.weather.units.temp)} | ${escapeHtml(weatherCodeToText(item.weather.weatherCode))} | Rain ${escapeHtml(item.weather.rainProbability)}${escapeHtml(item.weather.units.rain)} | Wind ${escapeHtml(item.weather.windSpeed)}${escapeHtml(item.weather.units.wind)}</span>
-              </div>
-            `;
           })
+        );
+
+        const severePoint = timelineData.find((item) => isSevereWeatherSample(item.weather));
+        const severeText = severePoint
+          ? `Strong weather risk near ${severePoint.location}.`
+          : "";
+
+        const routeTitle = `${compactLocationLabel(origin.label)} \u2192 ${compactLocationLabel(destination.label)}`;
+
+        const segmentHtml = timelineData.map((item) => {
+          const icon = item.weather ? weatherCodeToIcon(item.weather.weatherCode) : "\u25CF";
+          const temp = item.weather?.temperature == null ? "--" : Math.round(item.weather.temperature);
+          const condition = item.weather ? weatherCodeToText(item.weather.weatherCode) : "Weather unavailable";
+          return `
+            <div class="trip-board-segment">
+              <div class="trip-board-segment-icon" aria-hidden="true">${icon}</div>
+              <div class="trip-board-segment-time">${escapeHtml(formatTimelineTime(item.at))}</div>
+              <div class="trip-board-segment-place">${escapeHtml(item.location)}</div>
+              <div class="trip-board-segment-temp">${escapeHtml(temp)}${escapeHtml(item.weather?.units?.temp || "\u00B0F")}</div>
+              <div class="trip-board-segment-cond">${escapeHtml(condition)}</div>
+            </div>
+          `;
+        }).join("");
+
+        const timelineMeta = [
+          { key: "Departure", value: formatTimelineTime(etd) },
+          { key: "Avg speed", value: `${speedValue.toFixed(0)} mph` },
+          { key: "Distance", value: `${totalMiles.toFixed(0)} mi` },
+          { key: "Final ETA", value: formatTimelineTime(eta) }
+        ]
+          .map((row) => `<div class="trip-board-meta-item"><span>${escapeHtml(row.key)}</span><strong>${escapeHtml(row.value)}</strong></div>`)
           .join("");
 
         setStatus("Trip timeline ready.");
         setOutputHtml(`
-          <div class="trip-results">
-            <div class="trip-section">
-              <div class="trip-section-title">Trip Summary</div>
-              <div class="trip-kv-grid">${summaryRows}</div>
+          <div class="trip-weather-board">
+            <div class="trip-board-head">
+              <div class="trip-board-title">Clima en Ruta</div>
             </div>
-
-            <div class="trip-section">
-              <div class="trip-section-title">ELD 10h Mandatory Stop Suggestions</div>
-              <div class="trip-stop-grid">${stopsHtml}</div>
-            </div>
-
-            <div class="trip-section">
-              <div class="trip-section-title">Weather Timeline</div>
-              <div class="trip-weather-grid">${weatherHtml}</div>
-            </div>
+            <div class="trip-board-route">${escapeHtml(routeTitle)}</div>
+            <div class="trip-board-meta">${timelineMeta}</div>
+            <div class="trip-board-strip"></div>
+            <div class="trip-board-timeline">${segmentHtml}</div>
+            <div class="trip-board-eta">ETA Final: ${escapeHtml(formatTimelineTime(eta))}</div>
+            ${severeText ? `<div class="trip-board-alert">\u26A0 ${escapeHtml(severeText)}</div>` : ""}
           </div>
         `);
       }catch(error){
