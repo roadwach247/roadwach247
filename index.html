@@ -54,10 +54,13 @@
   </svg>
 
   <div class="page">
-    <nav id="screenNav" class="screen-nav" aria-label="View navigation" hidden>
-      <button id="btnNavBack" class="screen-nav-btn" type="button" aria-label="Go back">&#8592;</button>
-      <button id="btnNavHome" class="screen-nav-btn" type="button" aria-label="Go home">&#127968;</button>
-      <button id="btnNavForward" class="screen-nav-btn" type="button" aria-label="Go forward">&#8594;</button>
+    <nav id="screenNav" class="screen-nav" aria-label="View navigation">
+      <button id="btnClearTripTop" class="active-trip-clear screen-clear-trip" type="button" hidden>Clear Trip / New Trip</button>
+      <div class="screen-nav-actions">
+        <button id="btnNavBack" class="screen-nav-btn" type="button" aria-label="Go back">&#8592;</button>
+        <button id="btnNavHome" class="screen-nav-btn" type="button" aria-label="Go home">&#127968;</button>
+        <button id="btnNavForward" class="screen-nav-btn" type="button" aria-label="Go forward">&#8594;</button>
+      </div>
     </nav>
 
     <section id="viewHome" class="view is-active" data-view-title="Home">
@@ -71,7 +74,6 @@
           <div id="activeTripRoute" class="active-trip-route"></div>
           <div id="activeTripEta" class="active-trip-eta"></div>
         </div>
-        <button id="btnClearActiveTrip" class="active-trip-clear" type="button">Clear Trip / New Trip</button>
       </section>
 
       <main class="wrap wrap-compact">
@@ -200,10 +202,9 @@
       <div class="drv-screen">
         <div class="drv-section-head">
           <h1 class="drv-title">Trip Overview</h1>
-          <button id="btnClearTripOverview" class="rw-link-btn" type="button">Clear Trip / New Trip</button>
         </div>
         <div id="tripOverviewSummary" class="rw-summary"></div>
-        <div id="tripMapPlaceholder" class="trip-map-placeholder"></div>
+        <div id="tripMapPlaceholder" class="trip-map-wrap"></div>
         <div id="tripTimelineLite" class="timeline-lite-grid"></div>
         <div id="tripTimelineCompact" class="timeline-compact-list"></div>
       </div>

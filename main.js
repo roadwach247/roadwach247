@@ -7,7 +7,8 @@ const appState = {
   activeTrip: null,
   lastPlannedTrip: null,
   routeDraftOriginCoords: null,
-  tripOverviewStarted: false
+  tripOverviewStarted: false,
+  tripMapExpanded: false
 };
 
 const VIEW_IDS = [
@@ -66,7 +67,7 @@ function showView(viewName, { pushHistory = true } = {}) {
 
   appState.currentView = viewName;
   const nav = document.getElementById("screenNav");
-  if (nav) nav.hidden = viewName === "viewHome";
+  if (nav) nav.hidden = false;
   document.body.classList.toggle("subview-open", viewName !== "viewHome");
   updateNavButtons();
   window.scrollTo({ top: 0, behavior: "auto" });
@@ -177,6 +178,7 @@ function clearActiveTrip() {
   appState.backStack = [];
   appState.forwardStack = [];
   appState.tripOverviewStarted = false;
+  appState.tripMapExpanded = false;
   saveActiveTrip();
   renderActiveTripIndicator();
   goHome();
@@ -187,15 +189,18 @@ function renderActiveTripIndicator() {
   const routeEl = document.getElementById("activeTripRoute");
   const etaEl = document.getElementById("activeTripEta");
   if (!wrap || !routeEl || !etaEl) return;
+  const clearTopBtn = document.getElementById("btnClearTripTop");
 
   if (!appState.activeTrip) {
     wrap.hidden = true;
+    if (clearTopBtn) clearTopBtn.hidden = true;
     routeEl.textContent = "";
     etaEl.textContent = "";
     return;
   }
 
   wrap.hidden = false;
+  if (clearTopBtn) clearTopBtn.hidden = false;
   routeEl.textContent = `${appState.activeTrip.origin.text} → ${appState.activeTrip.destination.text}`;
   etaEl.textContent = `ETA ${formatDateTime(new Date(appState.activeTrip.routeSummary.eta))}`;
 }
@@ -413,7 +418,9 @@ function buildStopMockList(kind, count, { routeMode = false } = {}) {
     const baseDistance = routeMode ? 10 + i * 16 : 1.2 + i * 1.4;
     const onRouteLabel = routeMode ? (i % 2 === 0 ? "On-route" : `${(0.8 + i * 0.4).toFixed(1)} mi off-route`) : null;
     const names = ["Pilot", "Love's", "TA", "Petro", "Service Plaza", "Travel Center"];
-    const baseName = kind === "portWatch" ? `${city} Harbor Cam ${i + 1}` : `${names[i % names.length]} ${type === "Rest Area" ? city : `#${i + 1}`}`;
+    const baseName = kind === "portWatch"
+      ? `${city} Harbor Cam`
+      : `${names[i % names.length]} ${city}`;
     const address = kind === "portWatch" ? "Address unavailable" : `${100 + i * 17} Highway Dr, ${city}, ${state}`;
     const includeFuel = kind.includes("diesel");
     const { amenities, fuel } = buildAmenities(type, includeFuel);
@@ -550,13 +557,13 @@ function renderTimelineCards(timeline, container) {
     .map((row) => `
       <article class="timeline-lite-card">
         <div class="timeline-lite-head">
-          <div class="timeline-lite-city">${escapeHtml(row.cityState)}</div>
           <div class="timeline-lite-time">${escapeHtml(formatTime(new Date(row.time)))}</div>
+          <div class="timeline-lite-city">${escapeHtml(row.cityState)}</div>
         </div>
         <div class="timeline-lite-weather">
           <span>${ICONS.temp} ${escapeHtml(row.tempF)}°F</span>
           <span>${ICONS.condition} ${escapeHtml(row.condition)}</span>
-          ${row.anomalies.length ? `<button class="warning-btn js-warning-btn" type="button" data-warning='${escapeHtml(JSON.stringify(row.anomalies))}'>⚠ Warning</button>` : ""}
+          ${row.anomalies.length ? `<button class="warning-btn js-warning-btn" type="button" data-warning='${escapeHtml(JSON.stringify(row.anomalies))}'>⚠ ${escapeHtml(row.anomalies[0].split(":")[0])}</button>` : ""}
         </div>
       </article>
     `)
@@ -587,16 +594,20 @@ function renderWeatherNow() {
   if (!card) return;
   const weather = { city: "Nashville", st: "TN", tempF: 64, condition: "Partly Cloudy", windMph: 13, precipPct: 20 };
   card.innerHTML = `
-    <div class="stop-card" style="min-height:auto">
-      <div class="stop-card-head">
+    <div class="weather-now-card">
+      <div class="weather-now-head">
         <div>
-          <div class="stop-card-title">${escapeHtml(weather.city)}, ${escapeHtml(weather.st)}</div>
-          <div class="stop-card-type">Current conditions</div>
+          <div class="weather-now-place">${escapeHtml(weather.city)}, ${escapeHtml(weather.st)}</div>
+          <div class="weather-now-sub">Current conditions</div>
         </div>
         <span class="stop-card-badge">Now</span>
       </div>
-      ${weatherIconRow(weather)}
-      <div class="stop-card-note">Driver-friendly quick weather snapshot.</div>
+      <div class="weather-now-grid">
+        <div class="weather-now-item"><span class="weather-now-emoji">${ICONS.temp}</span><div><small>Temperature</small><strong>${escapeHtml(weather.tempF)}°F</strong></div></div>
+        <div class="weather-now-item"><span class="weather-now-emoji">${ICONS.condition}</span><div><small>Condition</small><strong>${escapeHtml(weather.condition)}</strong></div></div>
+        <div class="weather-now-item"><span class="weather-now-emoji">${ICONS.wind}</span><div><small>Wind</small><strong>${escapeHtml(weather.windMph)} mph</strong></div></div>
+        <div class="weather-now-item"><span class="weather-now-emoji">${ICONS.precip}</span><div><small>Precip</small><strong>${escapeHtml(weather.precipPct)}%</strong></div></div>
+      </div>
     </div>
   `;
 }
@@ -615,6 +626,7 @@ function renderTripOverview(trip, { started = false } = {}) {
   const compact = document.getElementById("tripTimelineCompact");
   if (!summary || !map || !lite || !compact) return;
 
+  const mapExpanded = appState.tripMapExpanded;
   summary.innerHTML = `
     <div class="rw-summary-row"><strong>${escapeHtml(trip.origin.text)} → ${escapeHtml(trip.destination.text)}</strong></div>
     <div class="rw-summary-grid">
@@ -628,14 +640,24 @@ function renderTripOverview(trip, { started = false } = {}) {
     <div class="rw-summary-label">Smart ETA (ELD-aware + traffic history)</div>
     <div class="rw-summary-actions">
       <button id="btnStartFromOverview" class="rw-btn-primary" type="button">Start My Trip</button>
-      <button id="btnClearFromOverviewInline" class="rw-link-btn" type="button">Clear Trip / New Trip</button>
       <span class="rw-summary-note">${started ? "Active trip view" : "Planned trip preview"}</span>
     </div>
   `;
 
-  map.innerHTML = started
-    ? `🗺️ Route Map Placeholder<br><span class="forward-note">${escapeHtml(trip.origin.text)} → ${escapeHtml(trip.destination.text)}</span>`
-    : `🗺️ Route Preview Placeholder<br><span class="forward-note">Tap Start My Trip for active trip view.</span>`;
+  map.innerHTML = `
+    <div class="map-collapsible">
+      <div class="map-collapsible-head">
+        <button id="btnToggleMap" class="rw-link-btn" type="button">${mapExpanded ? "Hide/Collapse Map" : "Show/Expand Map"}</button>
+        <span class="forward-note">${started ? "Active route map" : "Trip preview map"}</span>
+      </div>
+      <div id="mapPanel" class="map-collapsible-panel" ${mapExpanded ? "" : "hidden"}>
+        <div class="trip-map-placeholder">
+          🗺️ ${started ? "Route Map Placeholder" : "Route Preview Placeholder"}<br>
+          <span class="forward-note">${escapeHtml(trip.origin.text)} → ${escapeHtml(trip.destination.text)}</span>
+        </div>
+      </div>
+    </div>
+  `;
 
   renderTimelineCards(trip.timelineLite || [], lite);
   compact.innerHTML = started
@@ -648,7 +670,10 @@ function renderTripOverview(trip, { started = false } = {}) {
     persistPlannedTripAsActive(trip);
     renderTripOverview(trip, { started: true });
   });
-  document.getElementById("btnClearFromOverviewInline")?.addEventListener("click", clearActiveTrip);
+  document.getElementById("btnToggleMap")?.addEventListener("click", () => {
+    appState.tripMapExpanded = !appState.tripMapExpanded;
+    renderTripOverview(trip, { started: appState.tripOverviewStarted });
+  });
 }
 
 function openListViewForButton(buttonId) {
@@ -754,7 +779,7 @@ function bindRoutePlanning() {
     if (!validateRouteForm(values)) return;
     const trip = buildPlannedTripFromForm(values);
     appState.lastPlannedTrip = trip;
-    persistPlannedTripAsActive(trip);
+    appState.tripMapExpanded = false;
     renderTripOverview(trip, { started: false });
     showView("viewTripOverview");
   });
@@ -764,6 +789,7 @@ function bindRoutePlanning() {
     if (!validateRouteForm(values)) return;
     const trip = buildPlannedTripFromForm(values);
     appState.lastPlannedTrip = trip;
+    appState.tripMapExpanded = true;
     persistPlannedTripAsActive(trip);
     renderTripOverview(trip, { started: true });
     showView("viewTripOverview");
@@ -779,7 +805,7 @@ function bindNoTripView() {
 }
 
 function bindClearTripButtons() {
-  document.getElementById("btnClearActiveTrip")?.addEventListener("click", clearActiveTrip);
+  document.getElementById("btnClearTripTop")?.addEventListener("click", clearActiveTrip);
   document.getElementById("btnClearTripOverview")?.addEventListener("click", clearActiveTrip);
 }
 
