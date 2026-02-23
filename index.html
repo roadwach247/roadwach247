@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>RoadWach247</title>
+  <title>RoadWatch247</title>
   <link rel="stylesheet" href="./styles.css" />
   <script src="./main.js" defer></script>
 </head>
@@ -54,101 +54,232 @@
   </svg>
 
   <div class="page">
-    <header class="topbar">
-      <img class="logo" src="./assets/logo.png.jpg" alt="RoadWach247" />
-    </header>
+    <nav id="screenNav" class="screen-nav" aria-label="View navigation" hidden>
+      <button id="btnNavBack" class="screen-nav-btn" type="button" aria-label="Go back">&#8592;</button>
+      <button id="btnNavHome" class="screen-nav-btn" type="button" aria-label="Go home">&#127968;</button>
+      <button id="btnNavForward" class="screen-nav-btn" type="button" aria-label="Go forward">&#8594;</button>
+    </nav>
 
-    <main class="wrap wrap-compact">
-      <section class="hero">
-        <button id="btnTrip" class="card card-trip">
-          <div class="card-left">
-            <div class="icon"><svg viewBox="0 0 24 24"><use href="#i-route"></use></svg></div>
-          </div>
-          <div class="card-text">
-            <div class="card-title">ROUTE PLAINING</div>
-            <div class="card-sub">***smart ETA (ELD+traffic)***</div>
-          </div>
-        </button>
+    <section id="viewHome" class="view is-active" data-view-title="Home">
+      <header class="topbar">
+        <img class="logo" src="./assets/logo.png.jpg?v=20260221" alt="RoadWatch24/7" />
+      </header>
+
+      <section id="activeTripIndicator" class="active-trip-indicator" hidden>
+        <div class="active-trip-main">
+          <div class="active-trip-kicker">Active Trip</div>
+          <div id="activeTripRoute" class="active-trip-route"></div>
+          <div id="activeTripEta" class="active-trip-eta"></div>
+        </div>
+        <button id="btnClearActiveTrip" class="active-trip-clear" type="button">Clear Trip / New Trip</button>
       </section>
 
-      <section class="grid">
-        <button id="btnWeatherNow" class="card card-weather">
-          <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-weather"></use></svg></div></div>
-          <div class="card-text">
-            <div class="card-title">WEATHER NOW</div>
-            <div class="card-sub">Current and hourly weather</div>
-          </div>
-        </button>
+      <main class="wrap wrap-compact">
+        <section class="hero">
+          <button id="btnTrip" class="card card-trip">
+            <div class="card-left">
+              <div class="icon"><svg viewBox="0 0 24 24"><use href="#i-route"></use></svg></div>
+            </div>
+            <div class="card-text">
+              <div class="card-title">ROUTE PLANNING</div>
+              <div class="card-sub">***smart ETA (ELD+traffic)***</div>
+            </div>
+          </button>
+        </section>
 
-        <button id="btnTruckNear" class="card card-truck">
-          <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-truck"></use></svg></div></div>
-          <div class="card-text">
-            <div class="card-title">TRUCK STOPS NEAR ME</div>
-            <div class="card-sub">Fuel, parking and food nearby</div>
-          </div>
-        </button>
+        <section class="grid">
+          <button id="btnWeatherNow" class="card card-weather">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-weather"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">WEATHER NOW</div>
+              <div class="card-sub">Current and hourly weather</div>
+            </div>
+          </button>
 
-        <button id="btnTruckRoute" class="card card-route">
-          <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-map"></use></svg></div></div>
-          <div class="card-text">
-            <div class="card-title">TRUCK STOPS IN MY ROUTE</div>
-            <div class="card-sub">Stops aligned with your trip</div>
-          </div>
-        </button>
+          <button id="btnTruckNear" class="card card-truck">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-truck"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">TRUCK STOP NEAR ME</div>
+              <div class="card-sub">Fuel, parking and food nearby</div>
+            </div>
+          </button>
 
-        <button id="btnDieselNear" class="card card-diesel">
-          <div class="card-left">
-            <div class="icon"><svg viewBox="0 0 24 24"><use href="#i-fuel"></use></svg></div>
-          </div>
-          <div class="card-text">
-            <div class="card-title">DEF &amp; DIESEL</div>
-            <div class="card-sub">Near me</div>
-          </div>
-        </button>
+          <button id="btnTruckRoute" class="card card-route">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-map"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">PLACES I CAN STOP NOW</div>
+              <div class="card-sub">Fast stop options along your route.</div>
+            </div>
+          </button>
 
-        <button id="btnDieselRoute" class="card card-diesel2">
-          <div class="card-left">
-            <div class="icon"><svg viewBox="0 0 24 24"><use href="#i-fuel"></use></svg></div>
-          </div>
-          <div class="card-text">
-            <div class="card-title">DEF AND DIESEL IN MY ROUTE</div>
-            <div class="card-sub">Along my route</div>
-          </div>
-        </button>
+          <button id="btnDieselNear" class="card card-diesel">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-fuel"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">DIESEL &amp; DEF NEAR ME</div>
+              <div class="card-sub">Prices and truck amenities nearby</div>
+            </div>
+          </button>
 
-        <button id="btnRestRoute" class="card card-rest">
-          <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-rest"></use></svg></div></div>
-          <div class="card-text">
-            <div class="card-title">REST AREAS</div>
-            <div class="card-sub">Amenities, parking limits and overnight</div>
-          </div>
-        </button>
-      </section>
+          <button id="btnDieselRoute" class="card card-diesel2">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-fuel"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">DIESEL &amp; DEF IN MY ROUTE</div>
+              <div class="card-sub">Fuel options along your route</div>
+            </div>
+          </button>
 
-      <section class="port port-grid">
-        <button id="btnTrafficAhead" class="card card-traffic card-compact">
-          <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-route"></use></svg></div></div>
-          <div class="card-text">
-            <div class="card-title">TRAFFIC AHEAD</div>
-            <div class="card-sub">Live incidents and delays</div>
-          </div>
-        </button>
+          <button id="btnRestRoute" class="card card-rest">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-rest"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">REST AREAS IN MY ROUTE</div>
+              <div class="card-sub">Amenities, limits and overnight</div>
+            </div>
+          </button>
+        </section>
 
-        <button id="btnPort" class="card card-port card-compact">
-          <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-port"></use></svg></div></div>
-          <div class="card-text">
-            <div class="card-title">PORT WATCH (NY/NJ)</div>
-            <div class="card-sub">NY/NJ, Los Angeles, Oakland, Savannah</div>
-          </div>
-        </button>
-      </section>
+        <section class="port port-grid">
+          <button id="btnTrafficAhead" class="card card-traffic card-compact">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-route"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">TRAFFIC AHEAD</div>
+              <div class="card-sub">Incidents and delays on your route</div>
+            </div>
+          </button>
 
-      <section class="panel">
-        <div class="panel-title">Status</div>
-        <div id="status" class="panel-text">Ready. Click a button to test the flow.</div>
-        <div id="output" class="output"></div>
-      </section>
-    </main>
+          <button id="btnPort" class="card card-port card-compact">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-port"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">PORT WATCH (NY/NJ)</div>
+              <div class="card-sub">NY/NJ, Los Angeles, Oakland, Savannah</div>
+            </div>
+          </button>
+        </section>
+      </main>
+    </section>
+
+    <section id="viewRoutePlanning" class="view" data-view-title="Route Planning">
+      <div class="drv-screen drv-screen-tight">
+        <h1 class="drv-title">Route Planning</h1>
+        <form id="routePlanForm" class="drv-form drv-form-compact">
+          <label class="drv-label" for="routeOrigin">Origin</label>
+          <input id="routeOrigin" class="drv-input" type="text" placeholder="Current location or city, ST" />
+
+          <label class="drv-label" for="routeDestination">Destination</label>
+          <input id="routeDestination" class="drv-input" type="text" placeholder="e.g. Atlanta, GA" required />
+
+          <label class="drv-label" for="routeStartAt">Start date + time</label>
+          <input id="routeStartAt" class="drv-input" type="datetime-local" required />
+
+          <div class="drv-form-grid2">
+            <div>
+              <label class="drv-label" for="routeAvgSpeed">Avg speed (mph)</label>
+              <input id="routeAvgSpeed" class="drv-input" type="number" min="1" value="65" required />
+            </div>
+            <div>
+              <label class="drv-label" for="routeDriveHoursStart">Drive hrs available</label>
+              <input id="routeDriveHoursStart" class="drv-input" type="number" min="0" max="11" step="0.5" value="11" required />
+            </div>
+          </div>
+
+          <div class="drv-inline-toggles">
+            <label class="rw-toggle-row"><input id="routeBreakRule" type="checkbox" checked /><span>30-min break rule</span></label>
+            <label class="rw-toggle-row"><input id="routeIncludeReset" type="checkbox" checked /><span>10-hour reset</span></label>
+          </div>
+
+          <div class="drv-form-actions">
+            <button class="rw-btn-primary" type="submit">Plan Trip</button>
+            <button id="btnStartTripDirect" class="rw-link-btn" type="button">Start My Trip</button>
+          </div>
+        </form>
+
+        <div id="routePlanHints" class="drv-micro-note">Minimal form designed to fit on mobile without scrolling.</div>
+      </div>
+    </section>
+
+    <section id="viewTripOverview" class="view" data-view-title="Trip Overview">
+      <div class="drv-screen">
+        <div class="drv-section-head">
+          <h1 class="drv-title">Trip Overview</h1>
+          <button id="btnClearTripOverview" class="rw-link-btn" type="button">Clear Trip / New Trip</button>
+        </div>
+        <div id="tripOverviewSummary" class="rw-summary"></div>
+        <div id="tripMapPlaceholder" class="trip-map-placeholder"></div>
+        <div id="tripTimelineLite" class="timeline-lite-grid"></div>
+        <div id="tripTimelineCompact" class="timeline-compact-list"></div>
+      </div>
+    </section>
+
+    <section id="viewWeatherNow" class="view" data-view-title="Weather Now">
+      <div class="drv-screen drv-screen-list">
+        <h1 class="drv-title">Weather Now</h1>
+        <div id="weatherNowCard" class="rw-weather-card"></div>
+      </div>
+    </section>
+
+    <section id="viewTruckStopNear" class="view" data-view-title="Truck Stop Near Me">
+      <div class="drv-screen drv-screen-list">
+        <div class="drv-section-head"><h1 class="drv-title">Truck Stop Near Me</h1></div>
+        <div id="truckNearList" class="stop-card-list"></div>
+      </div>
+    </section>
+
+    <section id="viewPlacesStopNow" class="view" data-view-title="Places I Can Stop Now">
+      <div class="drv-screen drv-screen-list">
+        <div class="drv-section-head"><h1 class="drv-title">Places I Can Stop Now</h1></div>
+        <div id="placesStopNowList" class="stop-card-list"></div>
+      </div>
+    </section>
+
+    <section id="viewDieselDefNear" class="view" data-view-title="Diesel & DEF Near Me">
+      <div class="drv-screen drv-screen-list">
+        <div class="drv-section-head"><h1 class="drv-title">Diesel &amp; DEF Near Me</h1></div>
+        <div id="dieselNearList" class="stop-card-list"></div>
+      </div>
+    </section>
+
+    <section id="viewDieselDefRoute" class="view" data-view-title="Diesel & DEF In My Route">
+      <div class="drv-screen drv-screen-list">
+        <div class="drv-section-head"><h1 class="drv-title">Diesel &amp; DEF In My Route</h1></div>
+        <div id="dieselRouteList" class="stop-card-list"></div>
+      </div>
+    </section>
+
+    <section id="viewRestAreasRoute" class="view" data-view-title="Rest Areas In My Route">
+      <div class="drv-screen drv-screen-list">
+        <div class="drv-section-head"><h1 class="drv-title">Rest Areas In My Route</h1></div>
+        <div id="restRouteList" class="stop-card-list"></div>
+      </div>
+    </section>
+
+    <section id="viewTrafficAhead" class="view" data-view-title="Traffic Ahead">
+      <div class="drv-screen drv-screen-list">
+        <div class="drv-section-head"><h1 class="drv-title">Traffic Ahead</h1></div>
+        <div id="trafficAheadList" class="traffic-card-list"></div>
+      </div>
+    </section>
+
+    <section id="viewPortWatch" class="view" data-view-title="Port Watch">
+      <div class="drv-screen drv-screen-list">
+        <div class="drv-section-head"><h1 class="drv-title">Port Watch (NY/NJ)</h1></div>
+        <div id="portWatchList" class="stop-card-list"></div>
+      </div>
+    </section>
+
+    <section id="viewDetails" class="view" data-view-title="Details & Amenities">
+      <div class="drv-screen drv-screen-list">
+        <div id="detailsContent" class="details-shell"></div>
+      </div>
+    </section>
+
+    <section id="viewNoActiveTrip" class="view" data-view-title="No Active Trip">
+      <div class="drv-screen drv-screen-list">
+        <div class="rw-no-trip-card">
+          <div class="rw-stop-name">No active trip.</div>
+          <div class="rw-stop-meta">Plan a route first.</div>
+          <button id="btnGoPlanFromNoTrip" class="rw-btn-primary" type="button">Go to Route Planning</button>
+        </div>
+      </div>
+    </section>
   </div>
 </body>
 </html>
