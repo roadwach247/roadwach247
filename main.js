@@ -1,4 +1,5 @@
 const STORAGE_ACTIVE_TRIP_KEY = "rw_active_trip_v2";
+const STORAGE_UI_STATE_KEY = "rw_ui_state_v1";
 
 const appState = {
   currentView: "viewHome",
@@ -70,7 +71,8 @@ function showView(viewName, { pushHistory = true } = {}) {
   if (nav) nav.hidden = false;
   document.body.classList.toggle("subview-open", viewName !== "viewHome");
   updateNavButtons();
-  window.scrollTo({ top: 0, behavior: "auto" });
+  document.querySelector(".page")?.scrollTo?.({ top: 0, behavior: "auto" });
+  saveUiState();
 }
 
 function updateNavButtons() {
@@ -98,6 +100,46 @@ function goHome() {
   appState.backStack = [];
   appState.forwardStack = [];
   showView("viewHome", { pushHistory: false });
+}
+
+function saveUiState() {
+  try {
+    const routeStartAt = document.getElementById("routeStartAt")?.value || "";
+    const routeOrigin = document.getElementById("routeOrigin")?.value || "";
+    const routeDestination = document.getElementById("routeDestination")?.value || "";
+    const routeAvgSpeed = document.getElementById("routeAvgSpeed")?.value || "";
+    const routeDriveHoursStart = document.getElementById("routeDriveHoursStart")?.value || "";
+    const routeBreakRule = Boolean(document.getElementById("routeBreakRule")?.checked);
+    const routeIncludeReset = Boolean(document.getElementById("routeIncludeReset")?.checked);
+
+    const payload = {
+      currentView: appState.currentView,
+      tripMapExpanded: appState.tripMapExpanded,
+      routeForm: {
+        routeOrigin,
+        routeDestination,
+        routeStartAt,
+        routeAvgSpeed,
+        routeDriveHoursStart,
+        routeBreakRule,
+        routeIncludeReset
+      }
+    };
+
+    localStorage.setItem(STORAGE_UI_STATE_KEY, JSON.stringify(payload));
+  } catch {
+    // localStorage may be blocked
+  }
+}
+
+function loadUiState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_UI_STATE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 function formatDateTime(date) {
@@ -180,6 +222,7 @@ function clearActiveTrip() {
   appState.tripOverviewStarted = false;
   appState.tripMapExpanded = false;
   saveActiveTrip();
+  saveUiState();
   renderActiveTripIndicator();
   goHome();
 }
@@ -794,6 +837,19 @@ function bindRoutePlanning() {
     renderTripOverview(trip, { started: true });
     showView("viewTripOverview");
   });
+
+  [
+    "routeOrigin",
+    "routeDestination",
+    "routeStartAt",
+    "routeAvgSpeed",
+    "routeDriveHoursStart",
+    "routeBreakRule",
+    "routeIncludeReset"
+  ].forEach((id) => {
+    document.getElementById(id)?.addEventListener("input", saveUiState);
+    document.getElementById(id)?.addEventListener("change", saveUiState);
+  });
 }
 
 function bindNoTripView() {
@@ -824,6 +880,30 @@ function hydrateRouteFormFromActiveTrip() {
   }
 }
 
+function hydrateRouteFormFromUiState(uiState) {
+  if (!uiState?.routeForm) return;
+  const form = uiState.routeForm;
+  const mappings = [
+    ["routeOrigin", form.routeOrigin],
+    ["routeDestination", form.routeDestination],
+    ["routeStartAt", form.routeStartAt],
+    ["routeAvgSpeed", form.routeAvgSpeed],
+    ["routeDriveHoursStart", form.routeDriveHoursStart]
+  ];
+
+  mappings.forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (el && value != null && String(value) !== "") {
+      el.value = value;
+    }
+  });
+
+  const breakRule = document.getElementById("routeBreakRule");
+  const includeReset = document.getElementById("routeIncludeReset");
+  if (breakRule && typeof form.routeBreakRule === "boolean") breakRule.checked = form.routeBreakRule;
+  if (includeReset && typeof form.routeIncludeReset === "boolean") includeReset.checked = form.routeIncludeReset;
+}
+
 function bootstrapActiveTripForOverview() {
   if (!appState.activeTrip) return;
   appState.lastPlannedTrip = {
@@ -837,7 +917,45 @@ function bootstrapActiveTripForOverview() {
   };
 }
 
+function restoreViewFromUiState(uiState) {
+  if (!uiState?.currentView) return;
+  const view = uiState.currentView;
+  appState.tripMapExpanded = Boolean(uiState.tripMapExpanded);
+
+  if (view === "viewHome") return;
+  if (view === "viewRoutePlanning") {
+    ensureRoutePlanningDefaults();
+    showView("viewRoutePlanning", { pushHistory: false });
+    return;
+  }
+  if (view === "viewTripOverview" && appState.lastPlannedTrip) {
+    renderTripOverview(appState.lastPlannedTrip, { started: appState.tripOverviewStarted });
+    showView("viewTripOverview", { pushHistory: false });
+    return;
+  }
+
+  // Re-render list-based views safely from current mock generators
+  const buttonMap = {
+    viewWeatherNow: "btnWeatherNow",
+    viewTruckStopNear: "btnTruckNear",
+    viewPlacesStopNow: "btnTruckRoute",
+    viewDieselDefNear: "btnDieselNear",
+    viewDieselDefRoute: "btnDieselRoute",
+    viewRestAreasRoute: "btnRestRoute",
+    viewTrafficAhead: "btnTrafficAhead",
+    viewPortWatch: "btnPort"
+  };
+  const buttonId = buttonMap[view];
+  if (buttonId) {
+    openListViewForButton(buttonId);
+    appState.backStack = [];
+    appState.forwardStack = [];
+    updateNavButtons();
+  }
+}
+
 function init() {
+  const uiState = loadUiState();
   appState.activeTrip = loadActiveTrip();
   bindNavButtons();
   bindHomeButtons();
@@ -848,11 +966,13 @@ function init() {
 
   ensureRoutePlanningDefaults();
   hydrateRouteFormFromActiveTrip();
+  hydrateRouteFormFromUiState(uiState);
   bootstrapActiveTripForOverview();
   renderWeatherNow();
   renderActiveTripIndicator();
   updateNavButtons();
   showView("viewHome", { pushHistory: false });
+  restoreViewFromUiState(uiState);
 }
 
 document.addEventListener("DOMContentLoaded", init);
