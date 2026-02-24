@@ -1,6 +1,8 @@
 const STORAGE_ACTIVE_TRIP_KEY = "rw_active_trip_v2";
 const STORAGE_UI_STATE_KEY = "rw_ui_state_v1";
 const ROUTE_API_BASE = "https://router.project-osrm.org";
+const MAPBOX_GEOCODING_BASE = "https://api.mapbox.com/geocoding/v5/mapbox.places";
+const MAPBOX_ACCESS_TOKEN = process.env.MAPBOX_ACCESS_TOKEN || "";
 
 const appState = {
   currentView: "viewHome",
@@ -17,6 +19,10 @@ const appState = {
     shellEl: null,
     canvasEl: null,
     messageEl: null
+  },
+  remoteStopLists: {
+    truckNear: null,
+    placesRoute: null
   }
 };
 
@@ -516,10 +522,129 @@ function buildTrafficMockList() {
   ];
 }
 
+function haversineMiles(aLat, aLng, bLat, bLng) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const r = 3958.8;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const aa =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(aa));
+}
+
+function parseMapboxContext(feature) {
+  const ctx = Array.isArray(feature?.context) ? feature.context : [];
+  const place = ctx.find((item) => String(item?.id || "").startsWith("place."));
+  const region = ctx.find((item) => String(item?.id || "").startsWith("region."));
+  const city = place?.text || feature?.text || "Unknown";
+  const state = region?.short_code
+    ? String(region.short_code).replace(/^us-/, "").toUpperCase()
+    : (region?.text || "");
+  return { city, state };
+}
+
+async function fetchMapboxStops(kind, { routeMode = false } = {}) {
+  if (!MAPBOX_ACCESS_TOKEN) return null;
+
+  const trip = appState.activeTrip || appState.lastPlannedTrip;
+  const origin = trip?.origin;
+  const destination = trip?.destination;
+  const hasOrigin = Number.isFinite(origin?.lat) && Number.isFinite(origin?.lng);
+  const hasDestination = Number.isFinite(destination?.lat) && Number.isFinite(destination?.lng);
+
+  const anchor = routeMode && hasOrigin && hasDestination
+    ? { lat: (origin.lat + destination.lat) / 2, lng: (origin.lng + destination.lng) / 2 }
+    : hasOrigin
+      ? { lat: origin.lat, lng: origin.lng }
+      : { lat: 40.7128, lng: -74.0060 };
+
+  const queries = ["truck stop", "rest area", "service plaza"];
+  const settled = await Promise.allSettled(
+    queries.map(async (term) => {
+      const url = new URL(`${MAPBOX_GEOCODING_BASE}/${encodeURIComponent(term)}.json`);
+      url.searchParams.set("access_token", MAPBOX_ACCESS_TOKEN);
+      url.searchParams.set("country", "us");
+      url.searchParams.set("autocomplete", "false");
+      url.searchParams.set("limit", "5");
+      url.searchParams.set("proximity", `${anchor.lng},${anchor.lat}`);
+      const response = await fetch(url.toString());
+      if (!response.ok) throw new Error(`Mapbox request failed (${response.status})`);
+      const payload = await response.json();
+      return (payload?.features || []).map((feature) => ({ feature, term }));
+    })
+  );
+
+  const includeFuel = kind.includes("diesel");
+  const seen = new Set();
+  const items = [];
+
+  for (const bucket of settled) {
+    if (bucket.status !== "fulfilled") continue;
+    for (const row of bucket.value) {
+      const feature = row.feature;
+      const center = Array.isArray(feature?.center) ? feature.center : null;
+      if (!center || center.length < 2) continue;
+      const [lng, lat] = center;
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+
+      const placeName = String(feature?.place_name || "").trim();
+      const name = String(feature?.text || "").trim() || placeName.split(",")[0] || "Stop";
+      const dedupeKey = `${name.toLowerCase()}|${placeName.toLowerCase()}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      const { city, state } = parseMapboxContext(feature);
+      const distanceMi = Number(haversineMiles(anchor.lat, anchor.lng, lat, lng).toFixed(1));
+      const etaMin = Math.max(2, Math.round(distanceMi * 1.4));
+      const type =
+        row.term === "rest area" ? "Rest Area" :
+        row.term === "service plaza" ? "Service Plaza" :
+        "Truck Stop";
+      const onRouteLabel = routeMode
+        ? (items.length % 2 === 0 ? "On-route" : `${Math.max(0.5, (distanceMi % 3.4)).toFixed(1)} mi off-route`)
+        : null;
+      const { amenities, fuel } = buildAmenities(type, includeFuel);
+
+      items.push({
+        id: `${kind}-mapbox-${items.length}`,
+        name,
+        type,
+        city,
+        state,
+        address: placeName || "Address unavailable",
+        distanceMi,
+        etaMin,
+        onRouteLabel,
+        amenities,
+        fuel,
+        overnightRule: items.length % 2 === 0 ? "Overnight allowed: placeholder" : "Parking time limit posted: placeholder",
+        googleQuery: placeName || `${name} ${city} ${state}`
+      });
+    }
+  }
+
+  return items.sort((a, b) => a.distanceMi - b.distanceMi).slice(0, routeMode ? 9 : 10);
+}
+
+async function getTruckOrPlacesList(kind, options = {}) {
+  if (kind !== "truckNear" && kind !== "placesRoute") return null;
+  try {
+    const list = await fetchMapboxStops(kind, options);
+    if (Array.isArray(list) && list.length) {
+      appState.remoteStopLists[kind] = list;
+      return list;
+    }
+  } catch {
+    // Keep existing mock flow if Mapbox is unavailable.
+  }
+  return null;
+}
+
 function getDatasetRegistry() {
   return {
-    truckNear: buildStopMockList("truckNear", 10),
-    placesRoute: buildStopMockList("placesRoute", 9, { routeMode: true }),
+    truckNear: appState.remoteStopLists.truckNear || buildStopMockList("truckNear", 10),
+    placesRoute: appState.remoteStopLists.placesRoute || buildStopMockList("placesRoute", 9, { routeMode: true }),
     dieselNear: buildStopMockList("dieselNear", 8),
     dieselRoute: buildStopMockList("dieselRoute", 8, { routeMode: true }),
     restRoute: buildStopMockList("restRoute", 8, { routeMode: true }),
@@ -697,11 +822,12 @@ async function fetchRouteGeoJson(origin, destination) {
   }
   const payload = await response.json();
   const route = payload?.routes?.[0];
-  const coordinates = route?.geometry?.coordinates;
-  if (!Array.isArray(coordinates) || coordinates.length < 2) {
+  const geometry = route?.geometry;
+  const coordinates = geometry?.coordinates;
+  if (geometry?.type !== "LineString" || !Array.isArray(coordinates) || coordinates.length < 2) {
     throw new Error("Route geometry unavailable.");
   }
-  return coordinates.map(([lng, lat]) => [lat, lng]);
+  return geometry;
 }
 
 async function renderTripMap(trip) {
@@ -741,17 +867,20 @@ async function renderTripMap(trip) {
     }
 
     mapUi.messageEl.textContent = "Loading route...";
-    const latLngs = await fetchRouteGeoJson(origin, destination);
+    const routeGeometry = await fetchRouteGeoJson(origin, destination);
 
     if (appState.tripMap.routeLayer) {
-      appState.tripMap.routeLayer.setLatLngs(latLngs);
-    } else {
-      appState.tripMap.routeLayer = window.L.polyline(latLngs, {
+      appState.tripMap.leafletMap.removeLayer(appState.tripMap.routeLayer);
+      appState.tripMap.routeLayer = null;
+    }
+
+    appState.tripMap.routeLayer = window.L.geoJSON(routeGeometry, {
+      style: {
         color: "#3b82f6",
         weight: 5,
         opacity: 0.9
-      }).addTo(appState.tripMap.leafletMap);
-    }
+      }
+    }).addTo(appState.tripMap.leafletMap);
 
     const bounds = appState.tripMap.routeLayer.getBounds();
     if (bounds.isValid()) {
@@ -760,7 +889,7 @@ async function renderTripMap(trip) {
     appState.tripMap.leafletMap.invalidateSize();
     mapUi.messageEl.textContent = "Route map";
   } catch (error) {
-    mapUi.messageEl.textContent = `Route map unavailable: ${error?.message || "unknown error"}`;
+    mapUi.messageEl.textContent = "Route unavailable";
   }
 }
 
@@ -860,7 +989,7 @@ function renderTripOverview(trip, { started = false } = {}) {
   });
 }
 
-function openListViewForButton(buttonId) {
+async function openListViewForButton(buttonId) {
   const registry = getDatasetRegistry();
   if (buttonId === "btnTrip") {
     ensureRoutePlanningDefaults();
@@ -876,12 +1005,20 @@ function openListViewForButton(buttonId) {
   if (buttonId === "btnTruckNear") {
     renderStopCards(registry.truckNear, document.getElementById("truckNearList"), { listKind: "truckNear" });
     showView("viewTruckStopNear");
+    const list = await getTruckOrPlacesList("truckNear");
+    if (Array.isArray(list) && list.length) {
+      renderStopCards(list, document.getElementById("truckNearList"), { listKind: "truckNear" });
+    }
     return;
   }
   if (buttonId === "btnTruckRoute") {
     if (!ensureActiveTripOrShowNoTrip()) return;
     renderStopCards(registry.placesRoute, document.getElementById("placesStopNowList"), { listKind: "placesRoute", showOnRoute: true });
     showView("viewPlacesStopNow");
+    const list = await getTruckOrPlacesList("placesRoute", { routeMode: true });
+    if (Array.isArray(list) && list.length) {
+      renderStopCards(list, document.getElementById("placesStopNowList"), { listKind: "placesRoute", showOnRoute: true });
+    }
     return;
   }
   if (buttonId === "btnDieselNear") {
