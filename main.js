@@ -1,5 +1,6 @@
 const STORAGE_ACTIVE_TRIP_KEY = "rw_active_trip_v2";
 const STORAGE_UI_STATE_KEY = "rw_ui_state_v1";
+const ROUTE_API_BASE = "https://router.project-osrm.org";
 
 const appState = {
   currentView: "viewHome",
@@ -9,7 +10,14 @@ const appState = {
   lastPlannedTrip: null,
   routeDraftOriginCoords: null,
   tripOverviewStarted: false,
-  tripMapExpanded: false
+  tripMapExpanded: false,
+  tripMap: {
+    leafletMap: null,
+    routeLayer: null,
+    shellEl: null,
+    canvasEl: null,
+    messageEl: null
+  }
 };
 
 const VIEW_IDS = [
@@ -24,6 +32,9 @@ const VIEW_IDS = [
   "viewRestAreasRoute",
   "viewTrafficAhead",
   "viewPortWatch",
+  "viewLiveCams",
+  "viewLaneGuidance",
+  "viewWeighStations",
   "viewDetails",
   "viewNoActiveTrip"
 ];
@@ -73,6 +84,11 @@ function showView(viewName, { pushHistory = true } = {}) {
   updateNavButtons();
   document.querySelector(".page")?.scrollTo?.({ top: 0, behavior: "auto" });
   saveUiState();
+  if (viewName === "viewTripOverview" && appState.tripOverviewStarted) {
+    window.setTimeout(() => {
+      renderTripMap(appState.lastPlannedTrip || appState.activeTrip);
+    }, 0);
+  }
 }
 
 function updateNavButtons() {
@@ -632,6 +648,122 @@ function openWarningModal(anomalies) {
   document.getElementById("btnCloseWarningModal")?.addEventListener("click", () => overlay.remove());
 }
 
+function ensureTripMapDom() {
+  const mount = document.getElementById("mapPanel");
+  if (!mount || mount.hidden) return null;
+
+  const existingShell = appState.tripMap.shellEl;
+  if (existingShell && existingShell.parentElement !== mount) {
+    mount.innerHTML = "";
+    mount.appendChild(existingShell);
+  }
+
+  if (appState.tripMap.shellEl && appState.tripMap.canvasEl && appState.tripMap.messageEl) {
+    return appState.tripMap;
+  }
+
+  const shell = document.createElement("div");
+  shell.className = "trip-route-map-shell";
+
+  const msg = document.createElement("div");
+  msg.className = "trip-route-map-msg";
+  msg.textContent = "Loading route map...";
+
+  const canvas = document.createElement("div");
+  canvas.className = "trip-route-map-canvas";
+
+  shell.appendChild(msg);
+  shell.appendChild(canvas);
+  mount.innerHTML = "";
+  mount.appendChild(shell);
+
+  appState.tripMap.shellEl = shell;
+  appState.tripMap.canvasEl = canvas;
+  appState.tripMap.messageEl = msg;
+  return appState.tripMap;
+}
+
+async function fetchRouteGeoJson(origin, destination) {
+  const url = new URL(
+    `/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}`,
+    ROUTE_API_BASE
+  );
+  url.searchParams.set("overview", "full");
+  url.searchParams.set("geometries", "geojson");
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`Route request failed (${response.status})`);
+  }
+  const payload = await response.json();
+  const route = payload?.routes?.[0];
+  const coordinates = route?.geometry?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length < 2) {
+    throw new Error("Route geometry unavailable.");
+  }
+  return coordinates.map(([lng, lat]) => [lat, lng]);
+}
+
+async function renderTripMap(trip) {
+  if (!trip || !appState.tripOverviewStarted) return;
+  const mapUi = ensureTripMapDom();
+  if (!mapUi) return;
+
+  const origin = trip.origin;
+  const destination = trip.destination;
+  const hasCoords =
+    Number.isFinite(origin?.lat) &&
+    Number.isFinite(origin?.lng) &&
+    Number.isFinite(destination?.lat) &&
+    Number.isFinite(destination?.lng);
+
+  if (!hasCoords) {
+    mapUi.messageEl.textContent = "Route map unavailable: origin/destination coordinates are missing.";
+    if (mapUi.canvasEl) mapUi.canvasEl.innerHTML = "";
+    return;
+  }
+
+  if (typeof window.L === "undefined") {
+    mapUi.messageEl.textContent = "Map library is still loading. Please try again.";
+    return;
+  }
+
+  try {
+    if (!appState.tripMap.leafletMap) {
+      appState.tripMap.leafletMap = window.L.map(mapUi.canvasEl, {
+        zoomControl: true,
+        attributionControl: true
+      });
+      window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(appState.tripMap.leafletMap);
+    }
+
+    mapUi.messageEl.textContent = "Loading route...";
+    const latLngs = await fetchRouteGeoJson(origin, destination);
+
+    if (appState.tripMap.routeLayer) {
+      appState.tripMap.routeLayer.setLatLngs(latLngs);
+    } else {
+      appState.tripMap.routeLayer = window.L.polyline(latLngs, {
+        color: "#3b82f6",
+        weight: 5,
+        opacity: 0.9
+      }).addTo(appState.tripMap.leafletMap);
+    }
+
+    const bounds = appState.tripMap.routeLayer.getBounds();
+    if (bounds.isValid()) {
+      appState.tripMap.leafletMap.fitBounds(bounds, { padding: [18, 18] });
+    }
+    appState.tripMap.leafletMap.invalidateSize();
+    mapUi.messageEl.textContent = "Route map";
+  } catch (error) {
+    mapUi.messageEl.textContent = `Route map unavailable: ${error?.message || "unknown error"}`;
+  }
+}
+
 function renderWeatherNow() {
   const card = document.getElementById("weatherNowCard");
   if (!card) return;
@@ -710,12 +842,21 @@ function renderTripOverview(trip, { started = false } = {}) {
     : "";
 
   document.getElementById("btnStartFromOverview")?.addEventListener("click", () => {
+    appState.tripMapExpanded = true;
     persistPlannedTripAsActive(trip);
     renderTripOverview(trip, { started: true });
+    window.setTimeout(() => {
+      renderTripMap(trip);
+    }, 0);
   });
   document.getElementById("btnToggleMap")?.addEventListener("click", () => {
     appState.tripMapExpanded = !appState.tripMapExpanded;
     renderTripOverview(trip, { started: appState.tripOverviewStarted });
+    if (appState.tripOverviewStarted && appState.tripMapExpanded) {
+      window.setTimeout(() => {
+        renderTripMap(trip);
+      }, 0);
+    }
   });
 }
 
@@ -769,6 +910,18 @@ function openListViewForButton(buttonId) {
   if (buttonId === "btnPort") {
     renderStopCards(registry.portWatch, document.getElementById("portWatchList"), { listKind: "portWatch" });
     showView("viewPortWatch");
+    return;
+  }
+  if (buttonId === "btnLiveCams") {
+    showView("viewLiveCams");
+    return;
+  }
+  if (buttonId === "btnLaneGuidance") {
+    showView("viewLaneGuidance");
+    return;
+  }
+  if (buttonId === "btnWeighStations") {
+    showView("viewWeighStations");
   }
 }
 
@@ -803,7 +956,10 @@ function bindHomeButtons() {
     "btnDieselRoute",
     "btnRestRoute",
     "btnTrafficAhead",
-    "btnPort"
+    "btnPort",
+    "btnLiveCams",
+    "btnLaneGuidance",
+    "btnWeighStations"
   ].forEach((id) => {
     document.getElementById(id)?.addEventListener("click", () => openListViewForButton(id));
   });
@@ -836,6 +992,9 @@ function bindRoutePlanning() {
     persistPlannedTripAsActive(trip);
     renderTripOverview(trip, { started: true });
     showView("viewTripOverview");
+    window.setTimeout(() => {
+      renderTripMap(trip);
+    }, 0);
   });
 
   [
@@ -943,7 +1102,10 @@ function restoreViewFromUiState(uiState) {
     viewDieselDefRoute: "btnDieselRoute",
     viewRestAreasRoute: "btnRestRoute",
     viewTrafficAhead: "btnTrafficAhead",
-    viewPortWatch: "btnPort"
+    viewPortWatch: "btnPort",
+    viewLiveCams: "btnLiveCams",
+    viewLaneGuidance: "btnLaneGuidance",
+    viewWeighStations: "btnWeighStations"
   };
   const buttonId = buttonMap[view];
   if (buttonId) {

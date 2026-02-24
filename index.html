@@ -4,8 +4,22 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>RoadWatch247</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./lane-guidance.css" />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+    defer
+  ></script>
   <script src="./main.js" defer></script>
+  <script src="./lane-guidance.js" defer></script>
 </head>
 
 <body>
@@ -77,8 +91,8 @@
       </section>
 
       <main class="wrap wrap-compact">
-        <section class="hero">
-          <button id="btnTrip" class="card card-trip">
+        <section class="home-grid-12" aria-label="Home dashboard">
+          <button id="btnTrip" class="card card-trip home-slot">
             <div class="card-left">
               <div class="icon"><svg viewBox="0 0 24 24"><use href="#i-route"></use></svg></div>
             </div>
@@ -87,10 +101,8 @@
               <div class="card-sub">***smart ETA (ELD+traffic)***</div>
             </div>
           </button>
-        </section>
 
-        <section class="grid">
-          <button id="btnWeatherNow" class="card card-weather">
+          <button id="btnWeatherNow" class="card card-weather home-slot">
             <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-weather"></use></svg></div></div>
             <div class="card-text">
               <div class="card-title">WEATHER NOW</div>
@@ -98,7 +110,7 @@
             </div>
           </button>
 
-          <button id="btnTruckNear" class="card card-truck">
+          <button id="btnTruckNear" class="card card-truck home-slot">
             <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-truck"></use></svg></div></div>
             <div class="card-text">
               <div class="card-title">TRUCK STOP NEAR ME</div>
@@ -106,41 +118,7 @@
             </div>
           </button>
 
-          <button id="btnTruckRoute" class="card card-route">
-            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-map"></use></svg></div></div>
-            <div class="card-text">
-              <div class="card-title">PLACES I CAN STOP NOW</div>
-              <div class="card-sub">Fast stop options along your route.</div>
-            </div>
-          </button>
-
-          <button id="btnDieselNear" class="card card-diesel">
-            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-fuel"></use></svg></div></div>
-            <div class="card-text">
-              <div class="card-title">DIESEL &amp; DEF NEAR ME</div>
-              <div class="card-sub">Prices and truck amenities nearby</div>
-            </div>
-          </button>
-
-          <button id="btnDieselRoute" class="card card-diesel2">
-            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-fuel"></use></svg></div></div>
-            <div class="card-text">
-              <div class="card-title">DIESEL &amp; DEF IN MY ROUTE</div>
-              <div class="card-sub">Fuel options along your route</div>
-            </div>
-          </button>
-
-          <button id="btnRestRoute" class="card card-rest">
-            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-rest"></use></svg></div></div>
-            <div class="card-text">
-              <div class="card-title">REST AREAS IN MY ROUTE</div>
-              <div class="card-sub">Amenities, limits and overnight</div>
-            </div>
-          </button>
-        </section>
-
-        <section class="port port-grid">
-          <button id="btnTrafficAhead" class="card card-traffic card-compact">
+          <button id="btnTrafficAhead" class="card card-traffic home-slot">
             <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-route"></use></svg></div></div>
             <div class="card-text">
               <div class="card-title">TRAFFIC AHEAD</div>
@@ -148,11 +126,67 @@
             </div>
           </button>
 
-          <button id="btnPort" class="card card-port card-compact">
+          <button id="btnTruckRoute" class="card card-route home-slot">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-map"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">PLACES I CAN STOP NOW</div>
+              <div class="card-sub">Fast stop options along your route.</div>
+            </div>
+          </button>
+
+          <button id="btnPort" class="card card-port home-slot">
             <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-port"></use></svg></div></div>
             <div class="card-text">
               <div class="card-title">PORT WATCH (NY/NJ)</div>
               <div class="card-sub">NY/NJ, Los Angeles, Oakland, Savannah</div>
+            </div>
+          </button>
+
+          <button id="btnDieselNear" class="card card-diesel home-slot">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-fuel"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">DIESEL &amp; DEF NEAR ME</div>
+              <div class="card-sub">Prices and truck amenities nearby</div>
+            </div>
+          </button>
+
+          <button id="btnLiveCams" class="card card-port home-slot">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-port"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">LIVE CAMS</div>
+              <div class="card-sub">Coming soon</div>
+            </div>
+          </button>
+
+          <button id="btnDieselRoute" class="card card-diesel2 home-slot">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-fuel"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">DIESEL &amp; DEF IN MY ROUTE</div>
+              <div class="card-sub">Fuel options along your route</div>
+            </div>
+          </button>
+
+          <button id="btnLaneGuidance" class="card card-route home-slot">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-map"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">LANE GUIDANCE</div>
+              <div class="card-sub">Coming soon</div>
+            </div>
+          </button>
+
+          <button id="btnRestRoute" class="card card-rest home-slot">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-rest"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">REST AREAS IN MY ROUTE</div>
+              <div class="card-sub">Amenities, limits and overnight</div>
+            </div>
+          </button>
+
+          <button id="btnWeighStations" class="card card-truck home-slot">
+            <div class="card-left"><div class="icon"><svg viewBox="0 0 24 24"><use href="#i-truck"></use></svg></div></div>
+            <div class="card-text">
+              <div class="card-title">WEIGH STATIONS</div>
+              <div class="card-sub">Coming soon</div>
             </div>
           </button>
         </section>
@@ -263,6 +297,39 @@
       <div class="drv-screen drv-screen-list">
         <div class="drv-section-head"><h1 class="drv-title">Port Watch (NY/NJ)</h1></div>
         <div id="portWatchList" class="stop-card-list"></div>
+      </div>
+    </section>
+
+    <section id="viewLiveCams" class="view" data-view-title="LIVE CAMS">
+      <div class="drv-screen drv-screen-list">
+        <div class="drv-section-head"><h1 class="drv-title">LIVE CAMS</h1></div>
+        <div class="rw-no-trip-card">
+          <div class="rw-stop-name">Coming soon</div>
+          <div class="rw-stop-meta">Camera feeds will appear here.</div>
+        </div>
+        <div class="stop-card-list"></div>
+      </div>
+    </section>
+
+    <section id="viewLaneGuidance" class="view" data-view-title="Lane Guidance">
+      <div class="drv-screen drv-screen-list">
+        <div class="drv-section-head"><h1 class="drv-title">LANE GUIDANCE</h1></div>
+        <div class="rw-no-trip-card">
+          <div class="rw-stop-name">Zone / Interchange preview (coming soon)</div>
+          <div class="rw-stop-meta">Lane preview cards will appear here.</div>
+        </div>
+        <div class="stop-card-list"></div>
+      </div>
+    </section>
+
+    <section id="viewWeighStations" class="view" data-view-title="WEIGH STATIONS">
+      <div class="drv-screen drv-screen-list">
+        <div class="drv-section-head"><h1 class="drv-title">WEIGH STATIONS</h1></div>
+        <div class="rw-no-trip-card">
+          <div class="rw-stop-name">Open / Closed status (coming soon)</div>
+          <div class="rw-stop-meta">Weigh station status list will appear here.</div>
+        </div>
+        <div class="stop-card-list"></div>
       </div>
     </section>
 
